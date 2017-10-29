@@ -1,7 +1,7 @@
 import argparse
 import re
 import time
-from multiprocessing.dummy import Pool # use threads for I/O bound tasks
+from multiprocessing.dummy import Pool
 from urllib import request, parse
 from urllib import error
 
@@ -26,10 +26,10 @@ def downloadAndSaveFile(url, filename, directory_name):
         data = response.read()
         output_file.write(data)
         response.close();
-    except IOError as ioe:  # If there is any IOError
+    except IOError as ioe:
         print(ioe)
         print("IOError!")
-    except error.HTTPError as e:  # If there is any HTTPError
+    except error.HTTPError as e:
         print("HTTPError!")
     except error.URLError as e:
         print("URLError!")
@@ -72,8 +72,6 @@ if __name__ == "__main__":
     directory_name = output_path + '\\' + category + '_' + phrase
     createDirectory(directory_name)
 
-
-
     p = 1
     while True:
         start_time = time.time()
@@ -88,7 +86,7 @@ if __name__ == "__main__":
 
         page_count = int(re.findall('data-maxpage="(.*?)"', webpage)[0])
 
-        matches = re.findall('("https(.*?)allegroimg.com/original(.*?)")', webpage)  # Regex dla url z obrazkami w pełnym rozmiarze
+        matches = re.findall('("https(.*?)allegroimg.com/original(.*?)")', webpage)
 
         print('Links found: ' + str(len(matches)))
 
