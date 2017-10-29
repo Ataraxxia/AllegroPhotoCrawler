@@ -1,5 +1,7 @@
 import argparse
 import re
+import time
+from multiprocessing.dummy import Pool # use threads for I/O bound tasks
 from urllib import request, parse
 from urllib import error
 
@@ -12,24 +14,27 @@ def downloadWebpage(url, values=''):
     response.close()
     return the_page
 
-def downloadAndSaveFile(url, directory_name, filename):
+def downloadAndSaveFile(url, filename, directory_name):
     try:
         req = request.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.17 (KHTML, like Gecko) Chrome/24.0.1312.27 Safari/537.17"})
         response = request.urlopen(req, None, 15)
-        output_file = open(directory_name + '/' + str(filename) + ".jpg", 'wb')
+
+        filename = directory_name + '\\' + str(filename) + ".jpg"
+        output_file = open(filename, 'wb')
 
         data = response.read()
         output_file.write(data)
         response.close();
     except IOError as ioe:  # If there is any IOError
-        pass
+        print(ioe)
+        print("IOError!")
     except error.HTTPError as e:  # If there is any HTTPError
-        pass
+        print("HTTPError!")
     except error.URLError as e:
-        pass
+        print("URLError!")
     except UnicodeEncodeError:  # Possible that we get some malformed urls because regex is not perfect :sadface:
-        pass
+        print("UnicodeError!")
 
 def createDirectory(name):
     import os
@@ -49,46 +54,53 @@ def createDirectory(name):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='''Skrypt do pobierania zdjęć z aukcji allegro''',
+        description='''Script for automated image files download from allegro website''',
     )
-    parser.add_argument('--category', type=str, default='', help='Nazwa kategorii, z listy dostępnych na allegro')
-    parser.add_argument('--phrase', type=str, default='', help='Hasło wyszukiwania')
-    parser.add_argument('--output-path', type=str, default='', help='Katalog zapisywania pobranych obrazów')
+    parser.add_argument('--category', type=str, default='', help='Category name')
+    parser.add_argument('--phrase', type=str, default='', help='Search keyword')
+    parser.add_argument('--output-path', type=str, default='', help='Path to directory where files will be saved')
+    parser.add_argument('--connections' type=int, default=10, help='How many requests to send in pararell')
     args=parser.parse_args()
 
     category = args.category.replace("'", "")
     phrase = args.phrase.replace("'", "")
     output_path = args.output_path.replace("'","")
+    connections = args.connections
 
     allegro_url = 'https://allegro.pl'
     allegro_url = allegro_url + '/kategoria/' + category
-    directory_name = output_path + '/' + category + '_' + phrase
+    directory_name = output_path + '\\' + category + '_' + phrase
     createDirectory(directory_name)
 
-    x = 1
+
+
+    p = 1
     while True:
+        start_time = time.time()
+
         if phrase != '':
             values = { 'string' : phrase,
-                        'p' : x}
+                        'p' : p}
         else:
-            values = { 'p' : x }
+            values = { 'p' : p }
 
-        webpage = downloadWebpage(allegro_url, values).decode('unicode-escape') #Allegro do linków z oryginałami obrazów stosuje kodowanie unicode z /u0000 etc.
+        webpage = downloadWebpage(allegro_url, values).decode('unicode-escape') #Full-sized images have names encoded with unicode
 
-        page_count = int(re.findall('data-maxpage="(.*?)"', webpage)[0]) #Extracts total page count returned by allegro
+        page_count = int(re.findall('data-maxpage="(.*?)"', webpage)[0])
 
-        m = re.findall('("https(.*?)allegroimg.com/original(.*?)")', webpage)  # Regex for url of full-sized images
+        matches = re.findall('("https(.*?)allegroimg.com/original(.*?)")', webpage)  # Regex dla url z obrazkami w pełnym rozmiarze
 
-        print('Links found: ' + str(len(m)))
+        print('Links found: ' + str(len(matches)))
 
-        k = 0
-        for imgurl in m:
-            _url = str(imgurl[0].replace('"', ''))
-            downloadAndSaveFile(_url, directory_name, 'page{0}_{1}'.format(x, k))
-            k = k + 1
+        matches = [x[0] for x in matches]
+        matches = [m.replace('"', '') for m in matches]
+        file_names = ['page_' + str(p) + '_' + str(x) for x in range(len(matches) + 1)]
+        prod = zip(matches, file_names, [directory_name for x in range(len(matches))])
 
-        print("Done page {0}".format(x))
-        x = x + 1
+        result = Pool(connections).starmap(downloadAndSaveFile, prod)
 
-        if (x > page_count):
+        print("Done page {0} in {1}".format(p, time.time() - start_time))
+        p = p + 1
+
+        if (p > page_count):
             break
