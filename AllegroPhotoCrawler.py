@@ -1,14 +1,16 @@
 import argparse
 import re
 import time
+import http.client
 from multiprocessing.dummy import Pool
 from urllib import request, parse
 from urllib import error
 
+HEADER = {"User-Agent": "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.17 (KHTML, like Gecko) Chrome/24.0.1312.27 Safari/537.17"}
 
 def downloadWebpage(url, values=''):
     data = parse.urlencode(values)
-    req = request.Request(url + '?' + data, headers={"User-Agent": "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.17 (KHTML, like Gecko) Chrome/24.0.1312.27 Safari/537.17"})
+    req = request.Request(url + '?' + data, headers=HEADER)
     response = request.urlopen(req)
     the_page = response.read()
     response.close()
@@ -16,16 +18,16 @@ def downloadWebpage(url, values=''):
 
 def downloadAndSaveFile(url, filename, directory_name):
     try:
-        req = request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.17 (KHTML, like Gecko) Chrome/24.0.1312.27 Safari/537.17"})
+        req = request.Request(url, headers=HEADER)
         response = request.urlopen(req, None, 15)
+        data = response.read()
 
         filename = directory_name + '\\' + str(filename) + ".jpg"
         output_file = open(filename, 'wb')
-
-        data = response.read()
         output_file.write(data)
         response.close();
+    except (http.client.IncompleteRead):
+        print("IncompleteRead! {0}".format(url))
     except IOError as ioe:
         print(ioe)
         print("IOError!")
@@ -35,6 +37,7 @@ def downloadAndSaveFile(url, filename, directory_name):
         print("URLError!")
     except UnicodeEncodeError:  # Possible that we get some malformed urls because regex is not perfect :sadface:
         print("UnicodeError!")
+
 
 def createDirectory(name):
     import os
@@ -59,12 +62,12 @@ if __name__ == "__main__":
     parser.add_argument('--category', type=str, default='', help='Category name')
     parser.add_argument('--phrase', type=str, default='', help='Search keyword')
     parser.add_argument('--output-path', type=str, default='', help='Path to directory where files will be saved')
-    parser.add_argument('--connections' type=int, default=10, help='How many requests to send in pararell')
+    parser.add_argument('--connections', type=int, default=10, help='How many requests to send in pararell')
     args=parser.parse_args()
 
-    category = args.category.replace("'", "")
-    phrase = args.phrase.replace("'", "")
-    output_path = args.output_path.replace("'","")
+    category = args.category
+    phrase = args.phrase
+    output_path = args.output_path
     connections = args.connections
 
     allegro_url = 'https://allegro.pl'
@@ -72,20 +75,19 @@ if __name__ == "__main__":
     directory_name = output_path + '\\' + category + '_' + phrase
     createDirectory(directory_name)
 
-    p = 1
-    while True:
+    values = { }
+    webpage = downloadWebpage(allegro_url, values).decode('unicode-escape') #Full-sized images have names encoded with unicode
+    page_count = int(re.findall('data-maxpage="(.*?)"', webpage)[0])
+
+    for p in range(1, page_count + 1):
         start_time = time.time()
+        values = { 'string' : phrase, 'p' : p}
+#        if phrase != '':
+#            values = { 'string' : phrase, 'p' : p}
+#        else:
+#            values = { 'p' : p }
 
-        if phrase != '':
-            values = { 'string' : phrase,
-                        'p' : p}
-        else:
-            values = { 'p' : p }
-
-        webpage = downloadWebpage(allegro_url, values).decode('unicode-escape') #Full-sized images have names encoded with unicode
-
-        page_count = int(re.findall('data-maxpage="(.*?)"', webpage)[0])
-
+        webpage = downloadWebpage(allegro_url, values).decode('unicode-escape')
         matches = re.findall('("https(.*?)allegroimg.com/original(.*?)")', webpage)
 
         print('Links found: ' + str(len(matches)))
@@ -97,8 +99,4 @@ if __name__ == "__main__":
 
         result = Pool(connections).starmap(downloadAndSaveFile, prod)
 
-        print("Done page {0} in {1}".format(p, time.time() - start_time))
-        p = p + 1
-
-        if (p > page_count):
-            break
+        print("Done page {0} in {1}min".format(p, (time.time() - start_time)/60))
